@@ -95,9 +95,30 @@ describe('$httpBackend', function() {
     abort();
     expect(xhr.abort).toHaveBeenCalledOnce();
 
-    xhr.status = 0;
+    xhr.status = 200;
     xhr.readyState = 4;
     xhr.onreadystatechange();
+    expect(callback).toHaveBeenCalledOnce();
+  });
+
+
+  it('should not abort a completed request', function() {
+    callback.andCallFake(function(status, response) {
+      expect(status).toBe(200);
+    });
+
+    var abort = $backend('GET', '/url', null, callback);
+    xhr = MockXhr.$$lastInstance;
+    spyOn(xhr, 'abort');
+
+    expect(typeof abort).toBe('function');
+
+    xhr.status = 200;
+    xhr.readyState = 4;
+    xhr.onreadystatechange();
+
+    abort();
+    expect(xhr.abort).toHaveBeenCalledOnce();
     expect(callback).toHaveBeenCalledOnce();
   });
 
@@ -236,6 +257,11 @@ describe('$httpBackend', function() {
 
       $backend('JSONP', '', null, callback);
       expect(fakeDocument.$$scripts[0].src).toBe($browser.url());
+    });
+
+
+    it('should respond undefined', function() {
+      expect($backend('JSONP', '/url')).toBeUndefined();
     });
 
 

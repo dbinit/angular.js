@@ -389,10 +389,10 @@ function $HttpProvider() {
      *   standard `then` method and three http specific methods: `success`, `error`, and `abort`.
      *   The `then` method takes two arguments a success and an error callback which will be called
      *   with a response object. The `abort` method will cancel a pending request, causing it to
-     *   fail. The `success` and `error` methods take a single argument - a function that will be
-     *   called when the request succeeds or fails respectively. The arguments passed into these
-     *   functions are destructured representation of the response object passed into the `then`
-     *   method. The response object has these properties:
+     *   fail, and return true or false if the abort succeeded. The `success` and `error` methods
+     *   take a single argument - a function that will be called when the request succeeds or fails
+     *   respectively. The arguments passed into these functions are destructured representation of
+     *   the response object passed into the `then` method. The response object has these properties:
      *
      *   - **data** – `{string|Object}` – The response body transformed with the transform functions.
      *   - **status** – `{number}` – HTTP status code of the response.
@@ -669,19 +669,15 @@ function $HttpProvider() {
     function sendReq(config, reqData, reqHeaders) {
       var deferred = $q.defer(),
           promise = deferred.promise,
+          aborted = false,
           abortFn,
+          complete,
           cache,
           cachedResp,
           url = buildUrl(config.url, config.params);
 
       $http.pendingRequests.push(config);
       promise.then(removePendingReq, removePendingReq);
-
-      promise.abort = function() {
-        if (isFunction(abortFn)) {
-          abortFn();
-        }
-      }
 
 
       if (config.cache && config.method == 'GET') {
@@ -702,6 +698,8 @@ function $HttpProvider() {
             } else {
               resolvePromise(cachedResp, 200, {});
             }
+            promise = promise.then(checkAbortedReq);
+            abortFn = noop;
           }
         } else {
           // put the promise for the non-transformed response into cache as a placeholder
@@ -713,6 +711,14 @@ function $HttpProvider() {
       if (!cachedResp) {
         abortFn = $httpBackend(config.method, url, reqData, done, reqHeaders, config.timeout,
             config.withCredentials);
+      }
+
+      promise.abort = function() {
+        if (isFunction(abortFn) && !complete) {
+          aborted = true;
+          abortFn();
+        }
+        return aborted;
       }
 
       return promise;
@@ -755,7 +761,20 @@ function $HttpProvider() {
       }
 
 
+      /**
+       * Reject a cached response that has been aborted.
+       */
+      function checkAbortedReq(response) {
+        if (aborted) {
+          extend(response, {data: null, status: 0});
+          return $q.reject(response);
+        }
+        return response;
+      }
+
+
       function removePendingReq() {
+        complete = true;
         var idx = indexOf($http.pendingRequests, config);
         if (idx !== -1) $http.pendingRequests.splice(idx, 1);
       }
